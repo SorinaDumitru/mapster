@@ -24,7 +24,7 @@ public readonly ref struct MapFeatureData
     public GeometryType Type { get; init; }
     public ReadOnlySpan<char> Label { get; init; }
     public ReadOnlySpan<Coordinate> Coordinates { get; init; }
-    public Dictionary<string, string> Properties { get; init; }
+    public HashSet<short> Properties { get; init; }
 }
 
 /// <summary>
@@ -131,15 +131,10 @@ public unsafe class DataFile : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private void GetProperty(ulong stringsOffset, ulong charsOffset, int i, out ReadOnlySpan<char> key, out ReadOnlySpan<char> value)
+    private void GetProperty(ulong stringsOffset, ulong charsOffset, int i, out ReadOnlySpan<char> value)
     {
-        if (i % 2 != 0)
-        {
-            throw new ArgumentException("Properties are key-value pairs and start at even indices in the string list (i.e. i % 2 == 0)");
-        }
-
-        GetString(stringsOffset, charsOffset, i, out key);
-        GetString(stringsOffset, charsOffset, i + 1, out value);
+        // no key needed for hashset
+        GetString(stringsOffset, charsOffset, i, out value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -181,11 +176,12 @@ public unsafe class DataFile : IDisposable
 
                 if (isFeatureInBBox)
                 {
-                    var properties = new Dictionary<string, string>(feature->PropertyCount);
+                    var properties = new HashSet<short>();
                     for (var p = 0; p < feature->PropertyCount; ++p)
                     {
-                        GetProperty(header.Tile.Value.StringsOffsetInBytes, header.Tile.Value.CharactersOffsetInBytes, p * 2 + feature->PropertiesOffset, out var key, out var value);
-                        properties.Add(key.ToString(), value.ToString());
+                        GetProperty(header.Tile.Value.StringsOffsetInBytes, header.Tile.Value.CharactersOffsetInBytes, p + feature->PropertiesOffset, out var value);
+                        short.TryParse(value, out var val);
+                        properties.Add(val);
                     }
 
                     if (!action(new MapFeatureData
